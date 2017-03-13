@@ -35,16 +35,16 @@ results$newx = results$newx-(127.7) # we subtract the actual location of the car
 ```
 
 
-### First we need to determine if distribution abides by assumptions 
-##### (1) the DV must be normally distributed 
+### First we need to determine if response variable distribution abides by anova assumptions 
+##### (1) The DV must be normally distributed 
 The idea behind normal distribution in anova is to avoid false positives, falsing predicting some data point as coming from a speciifc category). However, anova is typically robust against violations of normality (Glass et al. 1972, Harwell et al. 1992, Lix et al. 1996)
 
-There are a few ways to test for normality (no Skew or Kurtosis). The Shapiro test is the most conservative test.
+There are a few ways to test for normality (does not exhibit Skew or Kurtosis). The Shapiro test is the most conservative test. If it is significant, then we have a problem. 
 ```{r shap}
 shapiro.test(results$newx) #super conservative
 ```
 
-The q-q plot (or quantile by quantile plot) shows whether the first half of the data is different than the second half (e.g., did it come from the same population?)
+The q-q plot (or quantile by quantile plot) shows whether the first half of the data is different than the second half (e.g., did it come from the same population?). If lots of points do not fall on this line, then we might a problem. 
 ```{r qq}
 qqnorm(results$newx) #more conservative 
 qqline(results$newx) #more conservative 
@@ -58,7 +58,7 @@ hist(results$newx) #best to just eye ball it.
 ####Looks like it's not normal... so what to do? 
 We can apply some techniques to normalize such as log transformation for skewed data or trimming (in this case). 
 
-Trimming can be applied when your data appear to be centered, but not normal (e.g., kurtosis exists) due to outliers on both sides of the distribution. 
+Trimming can be applied when your data appear to be centered, but not normal (e.g., certain types of kurtosis) due to outliers on both sides of the distribution. 
 
 ```{r trim your Response variable}
 #here I trim my dataset to take only those who are 1.5 standard deviations away from the mean
@@ -68,7 +68,7 @@ test = results[results$newx<upper,]
 results=test[test$newx>lower,]
 ```
 
-Let's check for normality now:
+Let's check for normality:
 ```{r check normality 2}
 shapiro.test(results$newx) #super conservative
 qqnorm(results$newx) #more conservative 
@@ -103,7 +103,7 @@ library(car) #load library car for Levene's test
 leveneTest(newx ~ dir*lang, data = results) 
 # if p >.05 this suggests variances are the same (homogeneous)
 ```
-Looks good! So now, lets look to see if we've found a signficiant effect in our anova
+Looks good! So now, lets look to see if we've found a signficant effect in our anova
 
 ```{r anova}
 aov.out<-aov(newx ~ dir*lang, data = results)
@@ -111,7 +111,7 @@ summary(aov.out)
 anova(mod)
 ```
 
-We do! Let's run a Tukey SD analysis for simple effects 
+We do! Let's run a TukeyHSD test for simple effects (other tests exist)
 ```{r Simple effects}
 TukeyHSD(aov.out) #simple effects tests
 
