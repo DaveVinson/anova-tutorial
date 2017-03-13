@@ -1,0 +1,151 @@
+---
+title: "Anova Tutorial"
+author: "David W. Vinson"
+date: "3/13/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Analysis of Variance (anova)
+
+Anova is a parametric test meaning that the distribution has to abide by certain assumptions. You can find a nice review of it here: <http://www.unh.edu/halelab/BIOL933/labs/lab5.pdf>. We'll go over a few of them here (simple). Anova is used to test whether there is a signficant difference in responses between different categories. 
+
+For this example, we'll use a dataset from a recent paper that looks at how language influences the remembered location of a car, positioned on a hill. Here's the actual experiment: <http://davevinson.com/exp/vzm/2/z2.html>
+
+First let's set out wd and load the *data* (which can be found on <https://github.com/DaveVinson>)
+
+```{r load}
+setwd("/Users/Dave/Desktop")
+results <- read.csv("anova-data.csv")
+```
+
+Let's see what it looks like.
+```{r check out data}
+results[1:10,]
+```
+
+Here we're interested in "dir" for direction "lang" for language used and "newx" a measure of the placement of the car along the slope of the hill. We want to know if language "the car moved forward" or "the car moved backward" influences whether participants remember the car as farther away from its actual location when the car is facing **up** the hill or **down** the hill. So we'll use anova to evaluate whether this is the case. 
+
+Let's center our data around zero: 
+```{r center on zero}
+results$newx = results$newx-(127.7) # we subtract the actual location of the car on the slope
+```
+
+
+### First we need to determine if distribution abides by assumptions 
+##### (1) the DV must be normally distributed 
+The idea behind normal distribution in anova is to avoid false positives, falsing predicting some data point as coming from a speciifc category). However, anova is typically robust against violations of normality (Glass et al. 1972, Harwell et al. 1992, Lix et al. 1996)
+
+There are a few ways to test for normality (no Skew or Kurtosis). The Shapiro test is the most conservative test.
+```{r shap}
+shapiro.test(results$newx) #super conservative
+```
+
+The q-q plot (or quantile by quantile plot) shows whether the first half of the data is different than the second half (e.g., did it come from the same population?)
+```{r qq}
+qqnorm(results$newx) #more conservative 
+qqline(results$newx) #more conservative 
+```
+
+Least conservative (but most common) is just to eye-ball your histogram for normality
+```{r hist}
+hist(results$newx) #best to just eye ball it. 
+```
+
+####Looks like it's not normal... so what to do? 
+We can apply some techniques to normalize such as log transformation for skewed data or trimming (in this case). 
+
+Trimming can be applied when your data appear to be centered, but not normal (e.g., kurtosis exists) due to outliers on both sides of the distribution. 
+
+```{r trim your Response variable}
+#here I trim my dataset to take only those who are 1.5 standard deviations away from the mean
+upper=mean(results$newx)+(1.5*(sd(results$newx)))
+lower=mean(results$newx)-(1.5*(sd(results$newx)))
+test = results[results$newx<upper,]
+results=test[test$newx>lower,]
+```
+
+Let's check for normality now:
+```{r check normality 2}
+shapiro.test(results$newx) #super conservative
+qqnorm(results$newx) #more conservative 
+qqline(results$newx) #more conservative 
+hist(results$newx) #best to just eye ball it. 
+```
+Looking good! (although not perfect, we can move forward)
+
+### (2) The residuals must be normally distributed
+
+Build the model to get residuals. 
+```{r get resids}
+#Note we are interested in an interaction between car facing direction and language use
+mod<-lm(newx ~ dir*lang, results)
+results$resids <- residuals(mod)
+results$preds <- predict(mod)
+results$sq_preds <- results$preds^2
+```
+
+Check for normality
+```{r check normality again}
+#shapiro.test(results$resids) #super conservative
+#qqnorm(results$resids) #more conservative 
+#qqline(results$resids) #more conservative 
+hist(results$resids) #best to just eye ball it. 
+```
+
+### (3) variances must be homogeneous (equal across different groups)
+Levene's Test for homogenity of variances is perfect for this:
+```{r Levenes test}
+library(car) #load library car for Levene's test
+leveneTest(newx ~ dir*lang, data = results) 
+# if p >.05 this suggests variances are the same (homogeneous)
+```
+Looks good! So now, lets look to see if we've found a signficiant effect in our anova
+
+```{r anova}
+aov.out<-aov(newx ~ dir*lang, data = results)
+summary(aov.out)
+anova(mod)
+```
+
+We do! Let's run a Tukey SD analysis for simple effects 
+```{r Simple effects}
+TukeyHSD(aov.out) #simple effects tests
+
+```
+Let's plot it: 
+```{r plot}
+#for sake of easy plotting make a new variable
+results$cc = 0
+results[results$lang=="forward" & results$dir=="up",]$cc="Forward-Up"
+results[results$lang=="forward" & results$dir=="down",]$cc="Forward-Down"
+results[results$lang=="backward" & results$dir=="up",]$cc="Backward-Up"
+results[results$lang=="backward" & results$dir=="down",]$cc="Backward-Down"
+
+#make a function for standard error bars:
+stderr <- function(x) sqrt(var(x,na.rm=TRUE)/length(na.omit(x)))
+
+#make the plot
+library(doBy)
+library(ggplot2)
+library(scales)
+
+means = summaryBy(newx ~ cc,  data = results, 
+          FUN = function(x) { c(m = mean(x), s = stderr(x)) } ) #-mean for exp 2?
+means$x = c(2,5,6,1)
+means$cc <- factor(means$cc, levels = means$cc[order(-means$x)])
+
+ggplot(data=means,aes(newx.m,cc))+
+  geom_point()+
+  geom_errorbarh(aes(xmin=newx.m-newx.s,xmax=newx.m+newx.s,height=.5))+
+  geom_vline(xintercept=c(0), linetype="dotted")+
+  theme_bw()+
+  ggtitle("Interaction between image direction and language")+
+  #ggtitle("Experiment One")+
+  xlab("Gravity Dimension") +
+  ylab("Condition") +
+  annotate("text", x = 0,y=1, label = "Actual")
+```
